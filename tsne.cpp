@@ -44,10 +44,10 @@ using namespace std;
 static double sign(double x) { return (x == .0 ? .0 : (x < .0 ? -1.0 : 1.0)); }
 
 static void zeroMean(double* X, int N, int D);
-static void computeGaussianPerplexity(double* X, int N, int D, double* P, double perplexity);
+static void computeGaussianPerplexity(double* DD, int N, double perplexity, double* P);
 static double randn();
-static void computeExactGradient(double* P, double* Y, int N, int D, double* dC);
-static double evaluateError(double* P, double* Y, int N, int D);
+static void computeExactGradient(double* P, double* Y, double* DD, int N, int D, double* dC);
+static double evaluateError(double* P, double* DD, int N);
 static void computeSquaredEuclideanDistance(double* X, int N, int D, double* DD);
 
 // Perform t-SNE
@@ -81,7 +81,8 @@ void TSNE::run(double* X, int N, int D, double* Y, int no_dims, double perplexit
   double* dY = (double*)malloc(N * no_dims * sizeof(double));
   double* uY = (double*)malloc(N * no_dims * sizeof(double));
   double* gains = (double*)malloc(N * no_dims * sizeof(double));
-  if (dY == NULL || uY == NULL || gains == NULL) {
+  double* DD = (double*)malloc(N * N * sizeof(double));
+  if (dY == NULL || uY == NULL || gains == NULL || DD == NULL) {
     printf("Memory allocation failed!\n");
     exit(1);
   }
@@ -110,7 +111,8 @@ void TSNE::run(double* X, int N, int D, double* Y, int no_dims, double perplexit
     printf("Memory allocation failed!\n");
     exit(1);
   }
-  computeGaussianPerplexity(X, N, D, P, perplexity);
+  computeSquaredEuclideanDistance(X, N, D, DD);
+  computeGaussianPerplexity(DD, N, perplexity, P);
 
   // Symmetrize input similarities
   printf("Symmetrizing...\n");
@@ -143,7 +145,8 @@ void TSNE::run(double* X, int N, int D, double* Y, int no_dims, double perplexit
 
   for (int iter = 0; iter < max_iter; iter++) {
     // Compute (approximate) gradient
-    computeExactGradient(P, Y, N, no_dims, dY);
+    computeSquaredEuclideanDistance(Y, N, no_dims, DD);
+    computeExactGradient(P, Y, DD, N, no_dims, dY);
 
     // Update gains
     for (int i = 0; i < N * no_dims; i++) gains[i] = (sign(dY[i]) != sign(uY[i])) ? (gains[i] + .2) : (gains[i] * .8);
@@ -167,7 +170,8 @@ void TSNE::run(double* X, int N, int D, double* Y, int no_dims, double perplexit
     if (iter > 0 && (iter % 50 == 0 || iter == max_iter - 1)) {
       end = clock();
       double C = .0;
-      C = evaluateError(P, Y, N, no_dims);
+      computeSquaredEuclideanDistance(Y, N, no_dims, DD);
+      C = evaluateError(P, DD, N);
       if (iter == 0)
         printf("Iteration %d: error is %f\n", iter + 1, C);
       else {
@@ -185,21 +189,14 @@ void TSNE::run(double* X, int N, int D, double* Y, int no_dims, double perplexit
   free(uY);
   free(gains);
   free(P);
+  free(DD);
   printf("Fitting performed in %4.2f seconds.\n", total_time);
 }
 
 // Compute gradient of the t-SNE cost function (exact)
-static void computeExactGradient(double* P, double* Y, int N, int D, double* dC) {
+static void computeExactGradient(double* P, double* Y, double* DD, int N, int D, double* dC) {
   // Make sure the current gradient contains zeros
   for (int i = 0; i < N * D; i++) dC[i] = 0.0;
-
-  // Compute the squared Euclidean distance matrix
-  double* DD = (double*)malloc(N * N * sizeof(double));
-  if (DD == NULL) {
-    printf("Memory allocation failed!\n");
-    exit(1);
-  }
-  computeSquaredEuclideanDistance(Y, N, D, DD);
 
   // Compute Q-matrix and normalization sum
   double* Q = (double*)malloc(N * N * sizeof(double));
@@ -238,22 +235,14 @@ static void computeExactGradient(double* P, double* Y, int N, int D, double* dC)
   }
 
   // Free memory
-  free(DD);
-  DD = NULL;
   free(Q);
   Q = NULL;
 }
 
 // Evaluate t-SNE cost function (exactly)
-static double evaluateError(double* P, double* Y, int N, int D) {
+static double evaluateError(double* P, double* DD, int N) {
   // Compute the squared Euclidean distance matrix
-  double* DD = (double*)malloc(N * N * sizeof(double));
   double* Q = (double*)malloc(N * N * sizeof(double));
-  if (DD == NULL || Q == NULL) {
-    printf("Memory allocation failed!\n");
-    exit(1);
-  }
-  computeSquaredEuclideanDistance(Y, N, D, DD);
 
   // Compute Q-matrix and normalization sum
   int nN = 0;
@@ -277,21 +266,12 @@ static double evaluateError(double* P, double* Y, int N, int D) {
   }
 
   // Clean up memory
-  free(DD);
   free(Q);
   return C;
 }
 
 // Compute input similarities with a fixed perplexity
-static void computeGaussianPerplexity(double* X, int N, int D, double* P, double perplexity) {
-  // Compute the squared Euclidean distance matrix
-  double* DD = (double*)malloc(N * N * sizeof(double));
-  if (DD == NULL) {
-    printf("Memory allocation failed!\n");
-    exit(1);
-  }
-  computeSquaredEuclideanDistance(X, N, D, DD);
-
+static void computeGaussianPerplexity(double* DD, int N, double perplexity, double* P) {
   // Compute the Gaussian kernel row by row
   int nN = 0;
   for (int n = 0; n < N; n++) {
@@ -350,10 +330,6 @@ static void computeGaussianPerplexity(double* X, int N, int D, double* P, double
     for (int m = 0; m < N; m++) P[nN + m] /= sum_P;
     nN += N;
   }
-
-  // Clean up memory
-  free(DD);
-  DD = NULL;
 }
 
 // Compute squared Euclidean distance matrix
