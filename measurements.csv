@@ -1,0 +1,12 @@
+name,n,total_cycles,num_measurements
+performGradientDescentIteration,200,1096370674,1997
+performGradientDescentIteration,500,4437694070,997
+performGradientDescentIteration,752,10888031552,997
+performGradientDescentIteration,1000,10993247388,497
+performGradientDescentIteration,2000,14862977536,197
+performGradientDescentIteration,3000,40371694204,197
+performGradientDescentIteration,4000,78116894942,197
+performGradientDescentIteration,5000,105922992380,197
+performGradientDescentIteration,6000,164298693722,197
+performGradientDescentIteration,10000,419071807108,97
+performGradientDescentIteration,20000,1912143588376,97

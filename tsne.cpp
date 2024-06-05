@@ -39,6 +39,8 @@
 #include <cstring>
 #include <ctime>
 
+#include "measure.hpp"
+
 using namespace std;
 
 static double sign(double x) { return (x == .0 ? .0 : (x < .0 ? -1.0 : 1.0)); }
@@ -51,8 +53,7 @@ static double evaluateError(double* P, double* Y, int N, int D);
 static void computeSquaredEuclideanDistance(double* X, int N, int D, double* DD);
 
 // Perform t-SNE
-void TSNE::run(double* X, int N, int D, double* Y, int no_dims, double perplexity, double theta, int rand_seed,
-               bool skip_random_init, int max_iter, int stop_lying_iter, int mom_switch_iter) {
+void TSNE::run(double* X, int N, int D, double* Y, int no_dims, double perplexity, double theta, int rand_seed, bool skip_random_init, int max_iter, int stop_lying_iter, int mom_switch_iter) {
   // Set random seed
   if (skip_random_init != true) {
     if (rand_seed >= 0) {
@@ -141,7 +142,11 @@ void TSNE::run(double* X, int N, int D, double* Y, int no_dims, double perplexit
   printf("Input similarities computed in %4.2f seconds!\nLearning embedding...\n", (float)(end - start) / CLOCKS_PER_SEC);
   start = clock();
 
+  fasttsne::measure::reset();
+  fasttsne::measure::setNumSkip(3);
   for (int iter = 0; iter < max_iter; iter++) {
+    fasttsne::measure::start<fasttsne::measure::PERFORM_GRADIENT_DESCENT_ITERATION>();
+
     // Compute (approximate) gradient
     computeExactGradient(P, Y, N, no_dims, dY);
 
@@ -163,6 +168,8 @@ void TSNE::run(double* X, int N, int D, double* Y, int no_dims, double perplexit
     }
     if (iter == mom_switch_iter) momentum = final_momentum;
 
+    fasttsne::measure::stop<fasttsne::measure::PERFORM_GRADIENT_DESCENT_ITERATION>();
+
     // Print out progress
     if (iter > 0 && (iter % 50 == 0 || iter == max_iter - 1)) {
       end = clock();
@@ -179,6 +186,7 @@ void TSNE::run(double* X, int N, int D, double* Y, int no_dims, double perplexit
   }
   end = clock();
   total_time += (float)(end - start) / CLOCKS_PER_SEC;
+  fasttsne::measure::appendResults("measurements.csv", N);
 
   // Clean up memory
   free(dY);
